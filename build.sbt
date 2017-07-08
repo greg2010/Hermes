@@ -42,7 +42,7 @@ libraryDependencies ++= Seq(
   "org.quartz-scheduler" % "quartz" % "2.3.0",
   "net.joelinn" % "quartz-redis-jobstore" % "1.1.8",
   "org.red" %% "reddb" % "1.0.7-SNAPSHOT",
-  "org.red" %% "iris" % "0.0.3-SNAPSHOT",
+  "org.red" %% "iris" % "0.0.4-SNAPSHOT",
   "io.monix" %% "monix" % "2.3.0",
   "com.github.theholywaffle" % "teamspeak3-api" % "1.0.14",
   "com.gilt" %% "gfc-concurrent" % "0.3.5",
