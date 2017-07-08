@@ -1,0 +1,28 @@
+machine:
+  services:
+    - docker
+  java:
+    version: oraclejdk8
+
+dependencies:
+  cache_directories:
+    - ~/.ivy2
+    - ~/.sbt
+    - ~/google-cloud-sdk
+    - ~/docker
+checkout:
+  post:
+    - mkdir ${HOME}/.ivy2 -p
+    - echo $ARTIFACTORY_CREDS | base64 --decode > ${HOME}/.ivy2/.credentials
+test:
+  override:
+    - sbt assembly
+    - echo $GCLOUD_SERVICE_KEY | base64 --decode > ${HOME}/gcloud-service-key.json
+    - gcloud auth activate-service-account --key-file ${HOME}/gcloud-service-key.json
+    - gcloud config set project $GCLOUD_PROJECT
+    - gcloud docker -a
+    - docker build -t red/cerberus .
+    - docker tag red/cerberus gcr.io/$GCLOUD_PROJECT/hermes:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7}
+    - docker tag red/cerberus gcr.io/$GCLOUD_PROJECT/hermes:${CIRCLE_BRANCH}_latest
+    - docker tag red/cerberus gcr.io/$GCLOUD_PROJECT/hermes:latest
+    - gcloud docker -- push gcr.io/$GCLOUD_PROJECT/hermes

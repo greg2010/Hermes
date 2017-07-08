@@ -1,0 +1,9 @@
+---
+
+teamspeak_group_map:
+  - bit_name: b
+    teamspeak_group_id: 1
+  - bit_name: b
+    teamspeak_group_id: 3
+  - bit_name: d
+    teamspeak_group_id: 5
