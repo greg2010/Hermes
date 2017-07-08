@@ -22,7 +22,7 @@ test:
     - gcloud config set project $GCLOUD_PROJECT
     - gcloud docker -a
     - docker build -t red/cerberus .
-    - docker tag red/cerberus gcr.io/$GCLOUD_PROJECT/hermes:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7}
-    - docker tag red/cerberus gcr.io/$GCLOUD_PROJECT/hermes:${CIRCLE_BRANCH}_latest
-    - docker tag red/cerberus gcr.io/$GCLOUD_PROJECT/hermes:latest
+    - docker tag red/ceres gcr.io/$GCLOUD_PROJECT/hermes:${CIRCLE_BRANCH}_${CIRCLE_SHA1:0:7}
+    - docker tag red/ceres gcr.io/$GCLOUD_PROJECT/hermes:${CIRCLE_BRANCH}_latest
+    - docker tag red/ceres gcr.io/$GCLOUD_PROJECT/hermes:latest
     - gcloud docker -- push gcr.io/$GCLOUD_PROJECT/hermes
