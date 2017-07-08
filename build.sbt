@@ -21,7 +21,7 @@ assemblyMergeStrategy in assembly := {
            ("bckey.dsa" :: Nil) => MergeStrategy.discard
       case _ => MergeStrategy.first
     }
-  case PathList("reference.conf") => MergeStrategy.concat
+  case PathList("reference.conf") | PathList("application.conf") => MergeStrategy.concat
   case PathList(_*) => MergeStrategy.first
 }
 
