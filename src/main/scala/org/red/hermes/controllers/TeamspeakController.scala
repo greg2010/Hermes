@@ -1,13 +1,14 @@
 package org.red.hermes.controllers
 
-import com.gilt.gfc.concurrent.ScalaFutures.FutureOps
+import java.nio.channels.NotYetConnectedException
+
+import com.gilt.gfc.concurrent.ScalaFutures.{retryWithExponentialDelay}
 import com.github.theholywaffle.teamspeak3.api.CommandFuture
 import com.github.theholywaffle.teamspeak3.api.event._
 import com.github.theholywaffle.teamspeak3.api.wrapper.{Client, DatabaseClient, DatabaseClientInfo}
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.generic.auto._
-import monix.execution.Scheduler.{global => scheduler}
 import org.red.hermes.daemons.teamspeak.TeamspeakDaemon
 import org.red.hermes.jobs.teamspeak.RegistrationJoinListener
 import org.red.hermes.util.FutureConverters._
@@ -246,19 +247,24 @@ class TeamspeakController(config: Config)
   }
 
   private def safeQuery[T](f: () => T, timeout: FiniteDuration): Future[T] = {
-    // TODO: Fix java.lang.IllegalStateException: Promise already completed.
     val p = Promise[T]()
-    val q = scheduler.scheduleWithFixedDelay(0.seconds, 5.seconds) {
-      if (daemon.isConnected)
-        p.success(f.apply())
+    val r = retryWithExponentialDelay(maxRetryTimeout = 1.hour.fromNow, initialDelay = 1.second, maxDelay = 5.seconds) {
+      if (daemon.isConnected) {
+        val op = Future(f.apply())
+        op.onComplete {
+          case Success(res) => ()
+          case Failure(ex) =>
+            logger.warn("Exception during execution of teamspeak command event=teamspeak.execute.retry", ex)
+        }
+        op
+      } else {
+        Future.failed(new NotYetConnectedException())
+      }
     }
-    val r = p.future.withTimeout(timeout)
     r.onComplete {
       case Success(res) =>
-        q.cancel()
         logger.info(s"Executed teamspeak command commandResultType=${res.getClass.getName} event=teamspeak.execute.success")
       case Failure(ex) =>
-        q.cancel()
         logger.error(s"Failed to execute teamspeak command command ${timeout.toString()} event=teamspeak.execute.failure", ex)
     }
     r

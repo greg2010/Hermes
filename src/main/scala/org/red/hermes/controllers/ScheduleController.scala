@@ -42,7 +42,7 @@ class ScheduleController(config: Config, teamspeakController: => TeamspeakContro
           builtJob.getJobDataMap.put("uniqueId", uniqueId)
           val minutes = Random.nextInt(config.getInt("quartzTeamspeakUpdateMinutesRefreshRate"))
           val seconds = Random.nextInt(59)
-          val cronString = s"$seconds $minutes/${config.getString("quartzTeamspeakUpdateMinutesRefreshRate")} * * * ?"
+          val cronString = s"$seconds $minutes/${config.getString("quartzTeamspeakUpdateMinutesRefreshRate")} 0 * * ?"
           val t = newTrigger()
             .forJob(builtJob)
             .withIdentity(maybeTriggerKey)
