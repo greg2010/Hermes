@@ -56,7 +56,7 @@ private[this] class CustomConnectionHandler(config: Config)(implicit ec: Executi
         client.login(config.getString("ts3.serverQueryLogin"), config.getString("ts3.serverQueryPassword"))
       )
       _ <- FutureConverters.commandToScalaFuture(
-        client.selectVirtualServerById(config.getInt("ts3.virtualServerId"))
+        client.selectVirtualServerByPort(config.getInt("ts3.virtualServerPort"))
       )
       _ <- FutureConverters.commandToScalaFuture(
         client.setNickname(config.getString("ts3.botName") + "_" + generatePostfix)

@@ -36,7 +36,8 @@ class RegistrationJoinListener(client: TS3ApiAsync,
               s"event=teamspeak.listener.success")
             p.success(e.getUniqueClientIdentifier)
             client.removeTS3Listeners(this)
-
+          case c =>
+            logger.warn(s"User IP ${c.getIp} doesn't match $userIp event=teamspeak.register.warn")
         }
     }
   }
