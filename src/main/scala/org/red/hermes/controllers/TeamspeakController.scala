@@ -2,7 +2,7 @@ package org.red.hermes.controllers
 
 import java.nio.channels.NotYetConnectedException
 
-import com.gilt.gfc.concurrent.ScalaFutures.{retryWithExponentialDelay}
+import com.gilt.gfc.concurrent.ScalaFutures.retryWithExponentialDelay
 import com.github.theholywaffle.teamspeak3.api.CommandFuture
 import com.github.theholywaffle.teamspeak3.api.event._
 import com.github.theholywaffle.teamspeak3.api.wrapper.{Client, DatabaseClient, DatabaseClientInfo}
@@ -12,7 +12,7 @@ import io.circe.generic.auto._
 import org.red.hermes.daemons.teamspeak.TeamspeakDaemon
 import org.red.hermes.jobs.teamspeak.RegistrationJoinListener
 import org.red.hermes.util.FutureConverters._
-import org.red.hermes.util.TeamspeakGroupMapEntry
+import org.red.hermes.util.{TeamspeakGroupMapEntry, UserUtil}
 import org.red.db.models.Coalition
 import org.red.hermes.exceptions.ExceptionHandlers
 import org.red.iris.{ConflictingEntityException, PermissionBit, ResourceNotFoundException, User}
@@ -37,13 +37,6 @@ class TeamspeakController(config: Config)
 
   val teamspeakPermissionMap: Seq[TeamspeakGroupMapEntry] =
     YamlParser.parseResource[TeamspeakGroupMap](Source.fromResource("teamspeak_group_map.yml")).teamspeak_group_map
-
-  def obtainExpectedTeamspeakName(user: User): String = {
-    (user.eveUserData.allianceTicker match {
-      case Some(n) => s"$n | "
-      case None => ""
-    }) + s"${user.eveUserData.corporationTicker} | ${user.eveUserData.characterName}"
-  }
 
   def registerUserOnTeamspeak(user: User, userIp: String): Future[Unit] = {
 
@@ -93,7 +86,7 @@ class TeamspeakController(config: Config)
       p.future.flatMap(uniqueId => registerTeamspeakUser(user, uniqueId))
     }
 
-    val expectedName = this.obtainExpectedTeamspeakName(user)
+    val expectedName = UserUtil.generateNickName(user)
 
     val r = registerJoinedUser(expectedName).fallbackTo(registerUsingEventListener(expectedName))
 
@@ -168,7 +161,7 @@ class TeamspeakController(config: Config)
 
   def syncTeamspeakUser(uniqueId: String, permissions: Seq[PermissionBit], mainGroups: Seq[Int]): Future[Unit] = {
     val shouldBeGroups = permissions.flatMap { p =>
-      teamspeakPermissionMap.find(_.bit_name == p.name).map(_.teamspeak_group_id) ++ mainGroups
+      teamspeakPermissionMap.find(_.bit_position == p.bitPosition).map(_.teamspeak_group_id) ++ mainGroups
     }.toSet
 
     val f = (for {

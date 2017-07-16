@@ -1,5 +1,5 @@
 package org.red.hermes.util
 
-sealed trait Credentials
+case class TeamspeakGroupMapEntry(bit_position: Int, teamspeak_group_id: Int)
 
-case class TeamspeakGroupMapEntry(bit_name: String, teamspeak_group_id: Int)
+case class DiscordGroupMapEntry(bit_position: Int, discord_group_id: Long)

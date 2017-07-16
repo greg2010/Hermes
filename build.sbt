@@ -30,7 +30,11 @@ scalacOptions ++= Seq("-deprecation", "-feature")
 credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 
 resolvers ++=
-  Seq("Artifactory Realm" at "http://maven.red.greg2010.me/artifactory/sbt-local/")
+  Seq(
+    "Artifactory Realm" at "http://maven.red.greg2010.me/artifactory/sbt-local/",
+    "jcenter" at "http://jcenter.bintray.com"
+  )
+
 
 val circeVersion = "0.8.0"
 libraryDependencies ++= Seq(
@@ -41,11 +45,13 @@ libraryDependencies ++= Seq(
   "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0",
   "org.quartz-scheduler" % "quartz" % "2.3.0",
   "net.joelinn" % "quartz-redis-jobstore" % "1.1.8",
-  "org.red" %% "reddb" % "1.0.8-SNAPSHOT",
+  "org.red" %% "reddb" % "1.0.9-SNAPSHOT",
   "org.red" %% "iris" % "0.0.4-SNAPSHOT",
   "io.monix" %% "monix" % "2.3.0",
   "com.github.theholywaffle" % "teamspeak3-api" % "1.0.14",
+  "net.dv8tion" % "JDA" % "3.2.0_226",
   "com.gilt" %% "gfc-concurrent" % "0.3.5",
+  "net.databinder.dispatch" %% "dispatch-core"   % "0.13.1",
   "io.circe" %% "circe-core" % circeVersion,
   "io.circe" %% "circe-generic" % circeVersion,
   "io.circe" %% "circe-parser" % circeVersion,
