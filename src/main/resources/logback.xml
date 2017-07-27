@@ -5,6 +5,19 @@
         </encoder>
     </appender>
 
+
+    <appender name="GRAYLOG" class="com.github.pukkaone.gelf.logback.GelfAppender">
+        <graylogHost>tcp:graylog.red.greg2010.me</graylogHost>
+        <levelIncluded>true</levelIncluded>
+        <locationIncluded>false</locationIncluded>
+        <loggerIncluded>true</loggerIncluded>
+        <markerIncluded>false</markerIncluded>
+        <mdcIncluded>false</mdcIncluded>
+        <threadIncluded>false</threadIncluded>
+        <facility>gelf-java</facility>
+        <additionalField>application=hermes</additionalField>
+    </appender>
+
     <logger name="slick" level="WARN"/>
     <logger name="com.zaxxer.hikari" level="WARN"/>
     <logger name="io.netty" level="WARN"/>
@@ -12,5 +25,6 @@
 
     <root level="debug">
         <appender-ref ref="STDOUT"/>
+        <appender-ref ref="GRAYLOG" />
     </root>
 </configuration>

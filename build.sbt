@@ -42,6 +42,7 @@ libraryDependencies ++= Seq(
   "org.typelevel" %% "cats" % "0.9.0",
   "com.typesafe" % "config" % "1.3.1",
   "ch.qos.logback" % "logback-classic" % "1.1.7",
+  "com.github.pukkaone" % "logback-gelf" % "1.1.10",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0",
   "org.quartz-scheduler" % "quartz" % "2.3.0",
   "net.joelinn" % "quartz-redis-jobstore" % "1.1.8",
