@@ -25,7 +25,7 @@ class TeamspeakJob extends Job with LazyLogging {
           case Success(userId) =>
             userClient.getUser(userId).flatMap(teamspeakController.syncTeamspeakUser)
           case Failure(ex: ResourceNotFoundException) =>
-            teamspeakController.syncTeamspeakUser(uniqueId, Seq(), Seq())
+            teamspeakController.syncTeamspeakUser(uniqueId, Seq())
           case Failure(ex) =>
             Future.failed(ex)
         }.recover {

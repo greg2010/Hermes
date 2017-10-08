@@ -10,8 +10,8 @@ import scala.concurrent.ExecutionContext
 
 class TeamspeakServer(teamspeakController: => TeamspeakController)
                      (implicit ex: ExecutionContext) extends TeamspeakService[TFuture] {
-  override def registerUserOnTeamspeak(user: User, userIp: String): TFuture[Unit] = {
-    teamspeakController.registerUserOnTeamspeak(user, userIp).as[TFuture[Unit]]
+  override def registerUserOnTeamspeak(user: User, characterId: Long, userIp: String): TFuture[String] = {
+    teamspeakController.registerUserOnTeamspeak(user, characterId, userIp).as[TFuture[String]]
   }
 
   override def getTeamspeakUniqueId(userId: Int): TFuture[String] = {

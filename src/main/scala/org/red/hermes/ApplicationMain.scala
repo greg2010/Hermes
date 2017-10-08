@@ -16,7 +16,6 @@ object ApplicationMain extends App with LazyLogging {
   lazy val userClient = new UserClient(config)
   lazy val teamspeakController = new TeamspeakController(hermesConfig)
   lazy val scheduleController = new ScheduleController(hermesConfig, teamspeakController, userClient)
-  val discordController = new DiscordController(hermesConfig)
   val teamspeakServer = new TTeamspeakServer(config).build(new TeamspeakServer(teamspeakController))
 
   scheduleController.teamspeakDaemon

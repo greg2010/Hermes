@@ -23,7 +23,6 @@ class ScheduleDaemon(scheduleController: => ScheduleController,
                      userClient: => UserClient)
                     (implicit dbAgent: JdbcBackend.Database, ec: ExecutionContext) extends LazyLogging {
   val quartzScheduler: Scheduler = new StdSchedulerFactory().getScheduler
-  private val userDaemonTriggerName = "userDaemon"
   private val teamspeakDaemonTriggerName = "teamspeakDaemon"
 
   quartzScheduler.getContext.put("dbAgent", dbAgent)

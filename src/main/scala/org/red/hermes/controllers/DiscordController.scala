@@ -57,7 +57,7 @@ class DiscordController(config: Config)(implicit ec: ExecutionContext, dbAgent: 
   }
 
   def registerUserOnDiscord(user: User, accessToken: String, refreshToken: String): Future[Unit] = {
-    val jdaRoles = this.getDiscordPermissions(user.userPermissions.toSet)
+    val jdaRoles = this.getDiscordPermissions(user.permissions.toSet)
       .map(p => DiscordRole(guild.getRoleById(p.discord_group_id)))
     val f = this.getDiscordUser(accessToken).flatMap { dUser =>
       DiscordHelpers.inviteUserToGuild(
@@ -65,7 +65,7 @@ class DiscordController(config: Config)(implicit ec: ExecutionContext, dbAgent: 
         dUser.getIdLong,
         accessToken,
         token,
-        UserUtil.generateNickName(user),
+        UserUtil.generateNickName(user, 123),
         jdaRoles.toSeq
       ).map(_ => dUser)
     }.flatMap { dUser =>
@@ -83,11 +83,11 @@ class DiscordController(config: Config)(implicit ec: ExecutionContext, dbAgent: 
           s"userId=${user.userId} " +
           s"event=discord.register.failure", ex)
     }
-    f
+    f.map(_ => ())
   }
 
   def syncDiscordUser(user: User): Future[Unit] = {
-    val shouldBeRoles = this.getDiscordPermissions(user.userPermissions.toSet).map(_.discord_group_id)
+    val shouldBeRoles = this.getDiscordPermissions(user.permissions.toSet).map(_.discord_group_id)
     val discordId = dbAgent.run(
       Coalition.DiscordUsers.filter(_.userId === user.userId)
         .map(_.discordId)
@@ -108,8 +108,8 @@ class DiscordController(config: Config)(implicit ec: ExecutionContext, dbAgent: 
         .getMemberById(dId)
         .getRoles
         .asScala
-        .toSet
         .map(_.getIdLong)
+        .toSet
       }
 
     val toRemove = currentRoles.map { curRoles =>

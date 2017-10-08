@@ -30,18 +30,11 @@ object FutureConverters {
     p.future
   }
 
-  implicit def requestToScalaFuture[T](requestFuture: RequestFuture[T]): Future[T] = {
-    val p = Promise[T]
-    requestFuture.handle((t: T, u: Throwable) => {
-      (Option(t), Option(u)) match {
-        case (Some(res), _) => p.success(res)
-        case (_, Some(ex)) if NonFatal(ex) => p.failure(ex)
-      }
-    })
-    p.future
+  implicit def requestToScalaFuture[T](requestFuture: RequestFuture[T])(implicit ec: ExecutionContext): Future[T] = {
+    Future(requestFuture.get())
   }
 
   implicit class RichRequestFuture[T](val requestFuture: RequestFuture[T]) extends AnyVal {
-    def asScala(implicit ex: ExecutionContext): Future[T] = requestFuture
+    def asScala(implicit ec: ExecutionContext): Future[T] = requestFuture
   }
 }

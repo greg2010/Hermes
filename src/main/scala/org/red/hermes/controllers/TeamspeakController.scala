@@ -38,7 +38,7 @@ class TeamspeakController(config: Config)
   val teamspeakPermissionMap: Seq[TeamspeakGroupMapEntry] =
     YamlParser.parseResource[TeamspeakGroupMap](Source.fromResource("teamspeak_group_map.yml")).teamspeak_group_map
 
-  def registerUserOnTeamspeak(user: User, userIp: String): Future[Unit] = {
+  def registerUserOnTeamspeak(user: User, characterId: Long, userIp: String): Future[String] = {
 
     def registerJoinedUser(expectedNickname: String): Future[Unit] = {
       val f = safeTeamspeakQuery(() => client.getClients)()
@@ -86,7 +86,7 @@ class TeamspeakController(config: Config)
       p.future.flatMap(uniqueId => registerTeamspeakUser(user, uniqueId))
     }
 
-    val expectedName = UserUtil.generateNickName(user)
+    val expectedName = UserUtil.generateNickName(user, characterId)
 
     val r = registerJoinedUser(expectedName).fallbackTo(registerUsingEventListener(expectedName))
 
@@ -100,7 +100,7 @@ class TeamspeakController(config: Config)
           s"userId=${user.userId} " +
           s"event=teamspeak.register.failure", ex)
     }
-    Future {}
+    Future(expectedName)
   }
 
   def getTeamspeakUniqueId(userId: Int): Future[String] = {
@@ -159,9 +159,9 @@ class TeamspeakController(config: Config)
     this.safeTeamspeakQuery(() => client.getDatabaseClients)().map(_.asScala.toList.filterNot(_.getNickname.contains("ServerQuery")))
   }
 
-  def syncTeamspeakUser(uniqueId: String, permissions: Seq[PermissionBit], mainGroups: Seq[Int]): Future[Unit] = {
+  def syncTeamspeakUser(uniqueId: String, permissions: Seq[PermissionBit]): Future[Unit] = {
     val shouldBeGroups = permissions.flatMap { p =>
-      teamspeakPermissionMap.find(_.bit_position == p.bitPosition).map(_.teamspeak_group_id) ++ mainGroups
+      teamspeakPermissionMap.find(_.bit_position == p.bitPosition).map(_.teamspeak_group_id)
     }.toSet
 
     val f = (for {
@@ -175,7 +175,7 @@ class TeamspeakController(config: Config)
       }
       removeFromGroups <- Future.sequence {
         (curGroups -- shouldBeGroups).toList.map { groupId =>
-          this.safeTeamspeakQuery(() => client.addClientToServerGroup(groupId, tsDbId))().map(_.booleanValue())
+          this.safeTeamspeakQuery(() => client.removeClientFromServerGroup(groupId, tsDbId))().map(_.booleanValue())
         }
       }
     } yield addToGroups ++ removeFromGroups).map(_.forall(identity))
@@ -235,24 +235,7 @@ class TeamspeakController(config: Config)
   def syncTeamspeakUser(user: User): Future[Unit] = {
     for {
       uniqueId <- this.getTeamspeakUniqueId(user.userId)
-      corpMainGroup <- dbAgent.run(
-        Coalition.TeamspeakCorporationMainGroups
-          .filter(_.corporationId === user.eveUserData.corporationId)
-          .map(_.groupId)
-          .take(1)
-          .result
-      )
-      allianceMainGroup <- user.eveUserData.allianceId match {
-        case Some(id) => dbAgent.run(
-          Coalition.TeamspeakAllianceMainGroups
-            .filter(_.allianceId === id)
-            .map(_.groupId)
-            .take(1)
-            .result
-        )
-        case None => Future(Seq())
-      }
-      res <- syncTeamspeakUser(uniqueId, user.userPermissions, corpMainGroup ++ allianceMainGroup)
+      res <- syncTeamspeakUser(uniqueId, user.permissions)
     } yield res
   }
 

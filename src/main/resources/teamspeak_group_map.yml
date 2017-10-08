@@ -1,9 +1,19 @@
 ---
 
 teamspeak_group_map:
-  - bit_position: b
-    teamspeak_group_id: 1
-  - bit_position: b
-    teamspeak_group_id: 3
-  - bit_position: d
-    teamspeak_group_id: 5
+  - bit_position: 20
+    teamspeak_group_id: 186
+  - bit_position: 22
+    teamspeak_group_id: 26
+  - bit_position: 23
+    teamspeak_group_id: 24
+  - bit_position: 21
+    teamspeak_group_id: 27
+  - bit_position: 25
+    teamspeak_group_id: 23
+  - bit_position: 24
+    teamspeak_group_id: 25
+  - bit_position: 26
+    teamspeak_group_id: 9
+  - bit_position: 29
+    teamspeak_group_id: 48
