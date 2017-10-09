@@ -15,7 +15,7 @@ class TeamspeakServer(teamspeakController: => TeamspeakController)
   }
 
   override def getTeamspeakUniqueId(userId: Int): TFuture[String] = {
-    teamspeakController.getTeamspeakUniqueId(userId).as[TFuture[String]]
+    teamspeakController.getUniqueIdByUserId(userId).as[TFuture[String]]
   }
 
   override def getUserIdByUniqueId(uniqueId: String): TFuture[Int] = {

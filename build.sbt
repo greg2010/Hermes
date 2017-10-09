@@ -46,7 +46,7 @@ libraryDependencies ++= Seq(
   "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0",
   "org.quartz-scheduler" % "quartz" % "2.3.0",
   "net.joelinn" % "quartz-redis-jobstore" % "1.1.8",
-  "org.red" %% "reddb" % "1.0.10-SNAPSHOT",
+  "org.red" %% "reddb" % "1.0.11-SNAPSHOT",
   "org.red" %% "iris" % "0.0.19-SNAPSHOT",
   "io.monix" %% "monix" % "2.3.0",
   "com.github.theholywaffle" % "teamspeak3-api" % "1.0.14",

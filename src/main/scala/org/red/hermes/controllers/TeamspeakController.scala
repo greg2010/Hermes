@@ -24,7 +24,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.io.Source
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 
 class TeamspeakController(config: Config)
@@ -40,7 +40,8 @@ class TeamspeakController(config: Config)
 
   def registerUserOnTeamspeak(user: User, characterId: Long, userIp: String): Future[String] = {
 
-    def registerJoinedUser(expectedNickname: String): Future[Unit] = {
+    // Registers user if he is already on teamspeak (with the correct name)
+    def getUniqueIdOfJoinedUser(expectedNickname: String): Future[String] = {
       val f = safeTeamspeakQuery(() => client.getClients)()
         .map { r =>
           r.asScala.find(_.getNickname == expectedNickname) match {
@@ -65,10 +66,11 @@ class TeamspeakController(config: Config)
             s"expectedNickname=$expectedNickname " +
             s"event=teamspeak.joined.get.failure")
       }
-      f.flatMap(uniqueId => registerTeamspeakUser(user, uniqueId))
+      f
     }
 
-    def registerUsingEventListener(expectedNickname: String): Future[Unit] = {
+    // Creates event that returns uniqueId when user joins teamspeak
+    def getUniqueIdOnJoin(expectedNickname: String): Future[String] = {
       val p = Promise[String]()
       safeAddListener(new RegistrationJoinListener(client, this, config, expectedNickname, userIp, p))(10.minutes)
         .onComplete {
@@ -83,12 +85,36 @@ class TeamspeakController(config: Config)
               s"expectedNickname=$expectedNickname " +
               s"event=teamspeak.listener.create.failure")
         }
-      p.future.flatMap(uniqueId => registerTeamspeakUser(user, uniqueId))
+      p.future
+    }
+
+    // Adds user to db
+    def addUserToDB(uniqueId: String): Future[Unit] = {
+      val f = dbAgent.run(Coalition.TeamspeakUsers.filter(_.uniqueId === uniqueId).take(1).result).flatMap { r =>
+        r.headOption match {
+          case Some(res) => Future.failed(ConflictingEntityException("User with such teamspeak uniqueId already exists"))
+          case None =>
+            val q = Coalition.TeamspeakUsers
+              .map(r => (r.userId, r.uniqueId, r.mainCharacterId)) += (user.userId, uniqueId, characterId)
+            dbAgent.run(q)
+        }
+      }.recoverWith(ExceptionHandlers.dbExceptionHandler)
+      f.onComplete {
+        case Success(_) =>
+          logger.info(s"Successfully added user to db userId=${user.userId} event=teamspeak.register.success")
+        case Failure(ex) =>
+          logger.error(s"Failed to add user to db userId=${user.userId} event=teamspeak.register.failure", ex)
+      }
+      f.map(_ => ())
     }
 
     val expectedName = UserUtil.generateNickName(user, characterId)
 
-    val r = registerJoinedUser(expectedName).fallbackTo(registerUsingEventListener(expectedName))
+    val r = for {
+      uniqueId <- getUniqueIdOfJoinedUser(expectedName).fallbackTo(getUniqueIdOnJoin(expectedName))
+      _ <- addUserToDB(uniqueId)
+      res <- syncTeamspeakUser(user)
+    } yield res
 
     r.onComplete {
       case Success(_) =>
@@ -100,10 +126,12 @@ class TeamspeakController(config: Config)
           s"userId=${user.userId} " +
           s"event=teamspeak.register.failure", ex)
     }
+
+    // Log and discard output of `r` (since event handler may live up to 10 minutes)
     Future(expectedName)
   }
 
-  def getTeamspeakUniqueId(userId: Int): Future[String] = {
+  def getUniqueIdByUserId(userId: Int): Future[String] = {
     val f = dbAgent.run(Coalition.TeamspeakUsers.filter(_.userId === userId).result)
       .map { res =>
         res.headOption match {
@@ -137,48 +165,65 @@ class TeamspeakController(config: Config)
     f
   }
 
-  def registerTeamspeakUser(user: User, uniqueId: String): Future[Unit] = {
-    val f = dbAgent.run(Coalition.TeamspeakUsers.filter(_.uniqueId === uniqueId).take(1).result).flatMap { r =>
-      r.headOption match {
-        case Some(res) => Future.failed(ConflictingEntityException("User with such teamspeak uniqueId already exists"))
-        case None =>
-          val q = Coalition.TeamspeakUsers.map(r => (r.userId, r.uniqueId)) += (user.userId, uniqueId)
-          dbAgent.run(q).flatMap(r => syncTeamspeakUser(user))
-      }
-    }.recoverWith(ExceptionHandlers.dbExceptionHandler)
-    f.onComplete {
-      case Success(_) =>
-        logger.info(s"Successfully registered user in teamspeak userId=${user.userId} event=teamspeak.register.success")
-      case Failure(ex) =>
-        logger.error(s"Failed to register user in teamspeak userId=${user.userId} event=teamspeak.register.failure", ex)
-    }
-    f.map(_ => ())
-  }
-
   def getAllClients: Future[List[DatabaseClient]] = {
     this.safeTeamspeakQuery(() => client.getDatabaseClients)().map(_.asScala.toList.filterNot(_.getNickname.contains("ServerQuery")))
   }
 
   def syncTeamspeakUser(uniqueId: String, permissions: Seq[PermissionBit]): Future[Unit] = {
-    val shouldBeGroups = permissions.flatMap { p =>
+    // First, generate set of groups user is expected to have
+    val expectedGroups = permissions.flatMap { p =>
       teamspeakPermissionMap.find(_.bit_position == p.bitPosition).map(_.teamspeak_group_id)
     }.toSet
 
-    val f = (for {
-      tsDbId <- this.safeTeamspeakQuery(() => client.getDatabaseClientByUId(uniqueId))().map(_.getDatabaseId)
-      curGroups <- this.safeTeamspeakQuery(() => client.getServerGroupsByClientId(tsDbId))()
-        .map(_.asScala.map(_.getId).filterNot(_ == 8).toSet) // 8 corresponds to default group guest that cannot be removed
-      addToGroups <- Future.sequence {
-        (shouldBeGroups -- curGroups).toList.map { groupId =>
-          this.safeTeamspeakQuery(() => client.addClientToServerGroup(groupId, tsDbId))().map(_.booleanValue())
+    def applyGroups(databaseId: Int, groupsToAdd: Set[Int], groupsToRemove: Set[Int]) = {
+      def groupUpdateCallback(action: String, groupId: Int)(t: Try[Boolean]): Unit = {
+        t match {
+          case Success(res) if res =>
+            logger.debug(s"Successfully changed or removed group " +
+              s"action=$action " +
+              s"groupId=$groupId " +
+              s"databaseId=$databaseId " +
+              s"uniqueId8=${uniqueId.substring(8)} " +
+              s"event=teamspeak.group.$action.success")
+          case Success(res) if !res =>
+            logger.error(s"Failed to change or remove group " +
+              s"action=$action " +
+              s"groupId=$groupId " +
+              s"databaseId=$databaseId " +
+              s"uniqueId8=${uniqueId.substring(8)} " +
+              s"event=teamspeak.group.$action.failure")
+          case Failure(ex) =>
+            logger.error(s"Exception while trying to change or remove group " +
+              s"action=$action " +
+              s"groupId=$groupId " +
+              s"databaseId=$databaseId " +
+              s"uniqueId8=${uniqueId.substring(8)} " +
+              s"event=teamspeak.group.$action.failure", ex)
         }
       }
-      removeFromGroups <- Future.sequence {
-        (curGroups -- shouldBeGroups).toList.map { groupId =>
-          this.safeTeamspeakQuery(() => client.removeClientFromServerGroup(groupId, tsDbId))().map(_.booleanValue())
-        }
-      }
-    } yield addToGroups ++ removeFromGroups).map(_.forall(identity))
+      // Add every group from add list
+      val addFutureList = groupsToAdd.map { groupId =>
+        val f = this.safeTeamspeakQuery(() => client.addClientToServerGroup(groupId, databaseId))()
+          .map(_.booleanValue())
+        f.onComplete(groupUpdateCallback("add", groupId))
+        f
+      }.toList
+      // Remove every group from remove list
+      val removeFutureList = groupsToRemove.map { groupId =>
+        val f = this.safeTeamspeakQuery(() => client.removeClientFromServerGroup(groupId, databaseId))()
+          .map(_.booleanValue())
+        f.onComplete(groupUpdateCallback("remove", groupId))
+        f
+      }.toList
+      // Sequence the future and apply identity function in case of success
+      Future.sequence(addFutureList ++ removeFutureList).map(_.forall(identity))
+    }
+
+    val f = for {
+      c <- getClientByUniqueId(uniqueId)
+      currentGroups <- getServerGroupsByTeamspeakDatabaseId(c.getDatabaseId)
+      res <- applyGroups(c.getDatabaseId, expectedGroups -- currentGroups, currentGroups -- expectedGroups)
+    } yield res
 
     f.onComplete {
       case Success(true) =>
@@ -194,6 +239,29 @@ class TeamspeakController(config: Config)
     }
   }
 
+
+  def getServerGroupsByUniqueId(uniqueId: String): Future[Set[Int]] = {
+    this.getClientByUniqueId(uniqueId)
+      .flatMap(c => getServerGroupsByTeamspeakDatabaseId(c.getDatabaseId))
+  }
+
+  def getServerGroupsByTeamspeakDatabaseId(databaseId: Int): Future[Set[Int]] = {
+    // Filtering group 8, default group that cannot be added or removed
+    val f = this.safeTeamspeakQuery(() => client.getServerGroupsByClientId(databaseId))()
+      .map(_.asScala.map(_.getId).filterNot(_ != 8).toSet)
+    f.onComplete {
+      case Success(res) =>
+        logger.info(s"Got groups " +
+          s"teamspeakDatabaseId=$databaseId " +
+          s"teamspeakGroupList=${res.mkString(",")} " +
+          s"event=teamspeak.getGroups.success")
+      case Failure(ex) =>
+        logger.error(s"Failed to get groups for teamspeakDatabaseId=$databaseId event=teamspeak.getGroups.failure", ex)
+    }
+    f
+  }
+
+  // Gets database user (ie offline user) by unique id
   def getClientByUniqueId(uniqueId: String): Future[DatabaseClientInfo] = {
     val f: Future[DatabaseClientInfo] = this.safeTeamspeakQuery(() => client.getDatabaseClientByUId(uniqueId))()
       .map {
@@ -213,6 +281,7 @@ class TeamspeakController(config: Config)
     f
   }
 
+  // Gets connected user (ie user with IP and additional information) by unique id
   def getConnectedClientByUniqueId(uniqueId: String): Future[Client] = {
     val f: Future[Client] = this.safeTeamspeakQuery(() => client.getClientByUId(uniqueId))()
       .map {
@@ -234,7 +303,7 @@ class TeamspeakController(config: Config)
 
   def syncTeamspeakUser(user: User): Future[Unit] = {
     for {
-      uniqueId <- this.getTeamspeakUniqueId(user.userId)
+      uniqueId <- this.getUniqueIdByUserId(user.userId)
       res <- syncTeamspeakUser(uniqueId, user.permissions)
     } yield res
   }
