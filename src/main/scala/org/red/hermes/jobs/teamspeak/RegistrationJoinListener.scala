@@ -30,7 +30,9 @@ class RegistrationJoinListener(client: TS3ApiAsync,
     if (e.getClientNickname == expectedNickname) {
       teamspeakController.getConnectedClientByUniqueId(e.getUniqueClientIdentifier)
         .foreach {
-          case c if c.getIp == userIp =>
+          // Disabling IP verification as the IP supplied by Cerberus is always 127.0.0.1
+          // TODO: fix cerberus to provide the correct IP
+          case c /* if c.getIp == userIp*/ =>
             logger.info(s"Successfully obtained teamspeak uniqueId for user " +
               s"expectedNickname=$expectedNickname " +
               s"event=teamspeak.listener.success")

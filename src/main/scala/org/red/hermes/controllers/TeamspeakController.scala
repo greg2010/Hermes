@@ -40,35 +40,6 @@ class TeamspeakController(config: Config)
 
   def registerUserOnTeamspeak(user: User, characterId: Long, userIp: String): Future[String] = {
 
-    // Registers user if he is already on teamspeak (with the correct name)
-    def getUniqueIdOfJoinedUser(expectedNickname: String): Future[String] = {
-      val f = safeTeamspeakQuery(() => client.getClients)()
-        .map { r =>
-          r.asScala.find(_.getNickname == expectedNickname) match {
-            case Some(u) if u.getIp == userIp => u.getUniqueIdentifier
-            case _ => throw ResourceNotFoundException(s"No user with name $expectedNickname is on teamspeak")
-          }
-        }
-      f.onComplete {
-        case Success(res) =>
-          logger.info(s"Successfully obtained joined user uniqueId " +
-            s"userId=${user.userId} " +
-            s"expectedNickname=$expectedNickname " +
-            s"event=teamspeak.joined.get.success")
-        case Failure(ex: ResourceNotFoundException) =>
-          logger.warn("Failed to obtain joined user uniqueId, user isn't joined " +
-            s"userId=${user.userId} " +
-            s"expectedNickname=$expectedNickname " +
-            s"event=teamspeak.joined.get.failure")
-        case Failure(ex) =>
-          logger.error("Failed to obtain joined user uniqueId " +
-            s"userId=${user.userId} " +
-            s"expectedNickname=$expectedNickname " +
-            s"event=teamspeak.joined.get.failure")
-      }
-      f
-    }
-
     // Creates event that returns uniqueId when user joins teamspeak
     def getUniqueIdOnJoin(expectedNickname: String): Future[String] = {
       val p = Promise[String]()
@@ -111,7 +82,8 @@ class TeamspeakController(config: Config)
     val expectedName = UserUtil.generateNickName(user, characterId)
 
     val r = for {
-      uniqueId <- getUniqueIdOfJoinedUser(expectedName).fallbackTo(getUniqueIdOnJoin(expectedName))
+      uniqueId <- this.getConnectedClientByName(expectedName).map(_.getUniqueIdentifier)
+        .fallbackTo(getUniqueIdOnJoin(expectedName))
       _ <- addUserToDB(uniqueId)
       res <- syncTeamspeakUser(user)
     } yield res
@@ -167,6 +139,31 @@ class TeamspeakController(config: Config)
 
   def getAllClients: Future[List[DatabaseClient]] = {
     this.safeTeamspeakQuery(() => client.getDatabaseClients)().map(_.asScala.toList.filterNot(_.getNickname.contains("ServerQuery")))
+  }
+
+  def getConnectedClientByName(name: String): Future[Client] = {
+    val f = this.safeTeamspeakQuery(() => client.getClientByNameExact(name, true))().map { c =>
+      Option(c) match {
+        case Some(cl) => cl
+        case None => throw ResourceNotFoundException("No such client connected")
+      }
+    }
+    f.onComplete {
+      case Success(res) =>
+        logger.info(s"Got connected client by name " +
+          s"name=$name " +
+          s"uniqueId8=${res.getUniqueIdentifier.substring(8)} " +
+          s"event=teamspeak.getConnectedByName.success")
+      case Failure(ex: ResourceNotFoundException) =>
+        logger.warn(s"Did not find a connected client by name " +
+          s"name=$name " +
+          s"event=teamspeak.getConnectedByName.notFound")
+      case Failure(ex) =>
+        logger.error(s"Exception while trying to find a connected user by name " +
+          s"name=$name " +
+          s"event=teamspeak.getConnectedByName.failure", ex)
+    }
+    f
   }
 
   def syncTeamspeakUser(uniqueId: String, permissions: Seq[PermissionBit]): Future[Unit] = {
